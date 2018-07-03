@@ -9,13 +9,24 @@ Problem many to many join on subject where dose_date <= date
       dose.subject  equal ae.subject    and
       dose.dose_date less than or equal ae.date
 
-   All three programs gave the same results in WPS and SAS
+   First three programs gave the same results in WPS and SAS.
+   WPS does not support curobs (yet?);
 
-   THREE SOLUTIONS
+   FOUR SOLUTIONS
+   --------------
 
        1. SQL
        2. Datastep
        3. Hash Paul Dorfman sashole@bellsouth.net
+       4. Hash explicit rid and curobs Bart Jablonski <yabwon@GMAIL.COM>
+          WPS "ERROR: Found "curobs" when expecting one of END, KEY, NOBS or POINT"
+
+github
+https://tinyurl.com/yazu3uyn
+https://github.com/rogerjdeangelis/utl_many_to_many_merge_in_hash_datastep_and_sql
+
+SAS-L
+https://listserv.uga.edu/cgi-bin/wa?A2=SAS-L;d5646af5.1807a
 
 INPUT
 =====
@@ -131,6 +142,31 @@ PROCESS
          end ;
        run ; quit ;
 
+    4. HASH  (explicit rid curobs)
+
+       data want_bart ;
+         if _n_ = 1 then do ;
+           dcl hash h (multidata:"y") ;
+           h.definekey ("subject") ;
+           h.definedata ("dose_date", "rid") ;
+           h.definedone () ;
+           do until (z) ;  /* <--- no explicit RID loop */
+             set dose
+               /* (where = (<some additional conditions on "dose" here>))*/
+               end = z curobs=RID;
+               /*<--- curobs here */
+             h.add() ;
+           end ;
+         end ;
+         set ae ;
+       *do while (h.do_over() = 0) ; /*9.4 and up*/
+         if h.find() = 0 then do until (h.find_next() ne 0) ; /*9.2 and up*/
+           if date < dose_date then continue ;
+           set dose point = rid ;
+           output ;
+         end ;
+       run ;
+
 OUTPUT
 ======
 
@@ -238,6 +274,26 @@ libname wrk sas7bdat "%sysfunc(pathname(work))";
  run ; quit ;
  proc print;
  run;quit;
+ data want_bart ;
+   if _n_ = 1 then do ;
+     dcl hash h (multidata:"y") ;
+     h.definekey ("subject") ;
+     h.definedata ("dose_date", "rid") ;
+     h.definedone () ;
+     do until (z) ;
+       set wrk.dose
+         end = z curobs=RID;
+       h.add() ;
+     end ;
+   end ;
+   set wrk.ae ;
+ *do while (h.do_over() = 0) ; /*9.4 and up*/
+   if h.find() = 0 then do until (h.find_next() ne 0) ; /*9.2 and up*/
+     if date < dose_date then continue ;
+     set wrk.dose point = rid ;
+     output ;
+   end ;
+ run ;
 ');
 
 
